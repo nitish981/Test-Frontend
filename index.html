@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataBridge — API Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161922;
+  --bg-tertiary: #1c1f2e;
+  --bg-input: #0c0d12;
+  --border: #2a2d3a;
+  --border-hover: #3a3d4a;
+  --text-primary: #e0e0e6;
+  --text-secondary: #8a8d9a;
+  --text-muted: #5a5d6a;
+  --cyan: #00e5ff;
+  --cyan-dim: rgba(0, 229, 255, 0.12);
+  --cyan-glow: rgba(0, 229, 255, 0.25);
+  --amber: #ffab00;
+  --amber-dim: rgba(255, 171, 0, 0.12);
+  --green: #00e676;
+  --red: #ff5252;
+  --font: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0, 0, 0, 0.04) 2px, rgba(0, 0, 0, 0.04) 4px
+  );
+}
+
+/* ── Top Config Bar ── */
+.config-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.config-bar .logo { font-size: 15px; font-weight: 700; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; white-space: nowrap; }
+.config-bar .logo span { color: var(--text-muted); font-weight: 300; }
+.config-bar .separator { width: 1px; height: 20px; background: var(--border); }
+.config-bar label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+.config-bar input {
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+  font-family: var(--font); font-size: 12px; padding: 6px 10px; border-radius: 2px; width: 340px; transition: border-color 0.2s;
+}
+.config-bar input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan-dim); }
+.config-bar .conn-badge {
+  font-size: 10px; padding: 3px 8px; border-radius: 2px; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap;
+}
+.config-bar .conn-badge.ok { background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+.config-bar .conn-badge.fail { background: rgba(255,82,82,0.12); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
+.config-bar .conn-badge.checking { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); }
+.btn-ping {
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+  font-family: var(--font); font-size: 10px; padding: 5px 10px; border-radius: 2px;
+  cursor: pointer; letter-spacing: 1px; text-transform: uppercase; transition: all 0.15s;
+}
+.btn-ping:hover { border-color: var(--cyan); color: var(--cyan); }
+.config-bar .version { margin-left: auto; font-size: 10px; color: var(--text-muted); letter-spacing: 1px; }
+
+/* ── Layout ── */
+.app-layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 320px; min-width: 320px; background: var(--bg-secondary);
+  border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column;
+}
+.sidebar-header { padding: 16px 20px; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+
+/* ── Credential Panels ── */
+.cred-panel { border-bottom: 1px solid var(--border); }
+.cred-panel-header {
+  display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+  cursor: pointer; user-select: none; transition: background 0.15s;
+}
+.cred-panel-header:hover { background: rgba(255, 255, 255, 0.02); }
+.cred-panel-header .icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+.cred-panel-header .title { font-size: 13px; font-weight: 500; flex: 1; }
+.cred-panel-header .chevron { font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
+.cred-panel.open .cred-panel-header .chevron { transform: rotate(180deg); }
+
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; transition: background 0.3s; }
+.status-dot.loading { background: var(--cyan); animation: pulse-dot 1s infinite; }
+.status-dot.success { background: var(--green); }
+.status-dot.error { background: var(--red); }
+@keyframes pulse-dot { 0%, 100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+
+.cred-panel-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.cred-panel.open .cred-panel-body { max-height: 500px; }
+
+.cred-form { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-group label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); }
+.input-wrap { position: relative; display: flex; }
+.input-wrap input {
+  flex: 1; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+  font-family: var(--font); font-size: 12px; padding: 8px 36px 8px 10px; border-radius: 2px; transition: border-color 0.2s;
+}
+.input-wrap input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan-dim); }
+.input-wrap .toggle-vis {
+  position: absolute; right: 1px; top: 1px; bottom: 1px; width: 32px; background: transparent;
+  border: none; color: var(--text-muted); cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; font-family: var(--font); transition: color 0.15s;
+}
+.input-wrap .toggle-vis:hover { color: var(--text-secondary); }
+
+.btn-fetch {
+  background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
+  font-family: var(--font); font-size: 11px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; padding: 10px 16px; border-radius: 2px; cursor: pointer;
+  transition: all 0.15s; margin-top: 4px;
+}
+.btn-fetch:hover { background: var(--cyan-dim); box-shadow: 0 0 12px var(--cyan-dim); }
+.btn-fetch:active { transform: scale(0.98); }
+.btn-fetch:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-fetch.facebook { border-color: var(--amber); color: var(--amber); }
+.btn-fetch.facebook:hover { background: var(--amber-dim); box-shadow: 0 0 12px var(--amber-dim); }
+
+/* ── Main Content ── */
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Tabs ── */
+.tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-secondary); flex-shrink: 0; }
+.tab-btn {
+  padding: 12px 24px; background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-secondary); font-family: var(--font); font-size: 12px; font-weight: 500;
+  letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; gap: 8px;
+}
+.tab-btn:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.02); }
+.tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+.tab-btn.active.facebook-tab { color: var(--amber); border-bottom-color: var(--amber); }
+.tab-btn .tab-icon { font-size: 14px; }
+
+/* ── Data Panel ── */
+.data-panels { flex: 1; overflow: auto; position: relative; }
+.data-panel { display: none; padding: 24px; animation: fadeIn 0.3s ease; }
+.data-panel.active { display: block; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; color: var(--text-muted); text-align: center; gap: 12px; }
+.empty-state .empty-icon { font-size: 40px; opacity: 0.3; }
+.empty-state .empty-text { font-size: 13px; max-width: 340px; line-height: 1.7; }
+.empty-state .empty-hint { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); opacity: 0.6; }
+
+/* ── Loader ── */
+.loader-wrap { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; gap: 16px; }
+.loader-wrap.visible { display: flex; }
+.spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--cyan); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner.amber { border-top-color: var(--amber); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loader-text { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── Error ── */
+.error-msg {
+  display: none; background: rgba(255, 82, 82, 0.08); border: 1px solid rgba(255, 82, 82, 0.25);
+  border-left: 3px solid var(--red); padding: 14px 18px; border-radius: 2px; color: var(--red);
+  font-size: 12px; line-height: 1.6; margin-bottom: 16px; word-break: break-word;
+}
+.error-msg.visible { display: block; animation: fadeIn 0.3s ease; }
+
+/* ── Data Table ── */
+.table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.table-title { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+.row-count { font-size: 11px; color: var(--text-muted); }
+.table-container { overflow: auto; border: 1px solid var(--border); border-radius: 2px; max-height: calc(100vh - 260px); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table thead { position: sticky; top: 0; z-index: 2; }
+.data-table th {
+  background: var(--bg-tertiary); border-bottom: 1px solid var(--border); padding: 10px 14px;
+  text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text-secondary); white-space: nowrap; user-select: none;
+}
+.data-table td {
+  padding: 9px 14px; border-bottom: 1px solid rgba(42, 45, 58, 0.5); white-space: nowrap;
+  max-width: 300px; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);
+}
+.data-table tbody tr { animation: rowFadeIn 0.35s ease both; }
+.data-table tbody tr:nth-child(1) { animation-delay: 0.02s; }
+.data-table tbody tr:nth-child(2) { animation-delay: 0.04s; }
+.data-table tbody tr:nth-child(3) { animation-delay: 0.06s; }
+.data-table tbody tr:nth-child(4) { animation-delay: 0.08s; }
+.data-table tbody tr:nth-child(5) { animation-delay: 0.10s; }
+.data-table tbody tr:nth-child(6) { animation-delay: 0.12s; }
+.data-table tbody tr:nth-child(7) { animation-delay: 0.14s; }
+.data-table tbody tr:nth-child(8) { animation-delay: 0.16s; }
+.data-table tbody tr:nth-child(9) { animation-delay: 0.18s; }
+.data-table tbody tr:nth-child(10) { animation-delay: 0.20s; }
+@keyframes rowFadeIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+.data-table tbody tr:hover { background: rgba(0, 229, 255, 0.06); }
+
+/* ── Export ── */
+.export-bar { display: none; margin-top: 16px; gap: 12px; align-items: center; }
+.export-bar.visible { display: flex; }
+.btn-export {
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+  font-family: var(--font); font-size: 11px; font-weight: 500; letter-spacing: 1px;
+  text-transform: uppercase; padding: 8px 16px; border-radius: 2px; cursor: pointer;
+  transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+}
+.btn-export:hover { border-color: var(--cyan); color: var(--cyan); }
+.export-info { font-size: 10px; color: var(--text-muted); }
+
+/* ── Footer ── */
+.app-footer {
+  padding: 10px 20px; text-align: center; font-size: 10px; color: var(--text-muted);
+  border-top: 1px solid var(--border); background: var(--bg-secondary); letter-spacing: 1px; flex-shrink: 0;
+}
+.app-footer span { color: var(--text-secondary); }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .app-layout { flex-direction: column; }
+  .sidebar { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+  .config-bar { flex-wrap: wrap; }
+  .config-bar input { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ Config Bar ═══ -->
+<div class="config-bar">
+  <div class="logo">Data<span>Bridge</span></div>
+  <div class="separator"></div>
+  <label for="baseUrl">Backend URL</label>
+  <input type="text" id="baseUrl" value="https://YOUR-APP.onrender.com" spellcheck="false" placeholder="https://your-app.onrender.com">
+  <button class="btn-ping" onclick="pingBackend()">Test</button>
+  <span class="conn-badge" id="connBadge" style="display:none"></span>
+  <div class="version">v1.0 · proxy mode</div>
+</div>
+
+<!-- ═══ App Layout ═══ -->
+<div class="app-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">API Credentials</div>
+
+    <!-- Shopify Panel -->
+    <div class="cred-panel open" id="panelShopify">
+      <div class="cred-panel-header" onclick="togglePanel('panelShopify')">
+        <span class="icon">🛍</span>
+        <span class="title">Shopify</span>
+        <span class="status-dot" id="statusShopify"></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="cred-panel-body">
+        <div class="cred-form">
+          <div class="field-group">
+            <label>Shop Domain</label>
+            <div class="input-wrap">
+              <input type="text" id="shopDomain" placeholder="mystore.myshopify.com" spellcheck="false">
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Access Token</label>
+            <div class="input-wrap">
+              <input type="password" id="shopToken" placeholder="shpat_xxxxxxxxxxxx" spellcheck="false">
+              <button class="toggle-vis" onclick="toggleVis(this)" title="Toggle visibility">◉</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Date Range</label>
+            <div style="display:flex;gap:8px;">
+              <div class="input-wrap" style="flex:1"><input type="date" id="shopDateFrom" value="2025-01-01"></div>
+              <div class="input-wrap" style="flex:1"><input type="date" id="shopDateTo" value="2025-12-31"></div>
+            </div>
+          </div>
+          <button class="btn-fetch" onclick="fetchShopify()" id="btnShopify">▶ Fetch Data</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Facebook Panel -->
+    <div class="cred-panel open" id="panelFacebook">
+      <div class="cred-panel-header" onclick="togglePanel('panelFacebook')">
+        <span class="icon">📘</span>
+        <span class="title">Facebook Ads</span>
+        <span class="status-dot" id="statusFacebook"></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="cred-panel-body">
+        <div class="cred-form">
+          <div class="field-group">
+            <label>Ad Account ID</label>
+            <div class="input-wrap">
+              <input type="text" id="fbAccountId" placeholder="act_123456789" spellcheck="false">
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Access Token</label>
+            <div class="input-wrap">
+              <input type="password" id="fbToken" placeholder="EAAS1Nz..." spellcheck="false">
+              <button class="toggle-vis" onclick="toggleVis(this)" title="Toggle visibility">◉</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Date Range</label>
+            <div style="display:flex;gap:8px;">
+              <div class="input-wrap" style="flex:1"><input type="date" id="fbDateFrom" value="2024-01-01"></div>
+              <div class="input-wrap" style="flex:1"><input type="date" id="fbDateTo" value="2025-12-05"></div>
+            </div>
+          </div>
+          <button class="btn-fetch facebook" onclick="fetchFacebook()" id="btnFacebook">▶ Fetch Data</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main-content">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('shopify')" id="tabShopify"><span class="tab-icon">🛍</span> Shopify</button>
+      <button class="tab-btn facebook-tab" onclick="switchTab('facebook')" id="tabFacebook"><span class="tab-icon">📘</span> Facebook Ads</button>
+    </div>
+    <div class="data-panels">
+      <div class="data-panel active" id="dataShopify">
+        <div class="error-msg" id="errorShopify"></div>
+        <div class="loader-wrap" id="loaderShopify"><div class="spinner"></div><div class="loader-text">Fetching Shopify data…</div></div>
+        <div id="contentShopify">
+          <div class="empty-state">
+            <div class="empty-icon">🛍</div>
+            <div class="empty-text">Enter your Shopify credentials in the sidebar and click "Fetch Data" to pull order-level sales data via the backend proxy.</div>
+            <div class="empty-hint">Backend → ShopifyQL → GraphQL Admin API</div>
+          </div>
+        </div>
+      </div>
+      <div class="data-panel" id="dataFacebook">
+        <div class="error-msg" id="errorFacebook"></div>
+        <div class="loader-wrap" id="loaderFacebook"><div class="spinner amber"></div><div class="loader-text">Fetching Facebook Ads data…</div></div>
+        <div id="contentFacebook">
+          <div class="empty-state">
+            <div class="empty-icon">📘</div>
+            <div class="empty-text">Enter your Facebook Ads credentials in the sidebar and click "Fetch Data" to pull campaign insights via the backend proxy.</div>
+            <div class="empty-hint">Backend → Graph API → Async Insights</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app-footer">API Demo Dashboard — <span>credentials are sent to your backend proxy and are never stored</span></div>
+
+<script>
+// ── State ──
+let shopifyData = null;
+let facebookData = null;
+
+function getBaseUrl() { return document.getElementById('baseUrl').value.replace(/\/+$/, ''); }
+function togglePanel(id) { document.getElementById(id).classList.toggle('open'); }
+function toggleVis(btn) {
+  const inp = btn.previousElementSibling;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '◉' : '○';
+}
+function switchTab(tab) {
+  document.getElementById('tabShopify').classList.toggle('active', tab === 'shopify');
+  document.getElementById('tabFacebook').classList.toggle('active', tab === 'facebook');
+  document.getElementById('dataShopify').classList.toggle('active', tab === 'shopify');
+  document.getElementById('dataFacebook').classList.toggle('active', tab === 'facebook');
+}
+function setStatus(platform, state) {
+  const dot = document.getElementById('status' + platform);
+  dot.className = 'status-dot';
+  if (state) dot.classList.add(state);
+}
+function showLoader(platform, show) { document.getElementById('loader' + platform).classList.toggle('visible', show); }
+function showError(platform, msg) {
+  const el = document.getElementById('error' + platform);
+  if (msg) { el.textContent = '⚠ ' + msg; el.classList.add('visible'); }
+  else { el.textContent = ''; el.classList.remove('visible'); }
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Ping Backend ──
+async function pingBackend() {
+  const badge = document.getElementById('connBadge');
+  badge.style.display = 'inline';
+  badge.className = 'conn-badge checking';
+  badge.textContent = 'checking…';
+  try {
+    const resp = await fetch(getBaseUrl() + '/', { method: 'GET' });
+    if (resp.ok) { badge.className = 'conn-badge ok'; badge.textContent = 'connected'; }
+    else { badge.className = 'conn-badge fail'; badge.textContent = 'http ' + resp.status; }
+  } catch (e) { badge.className = 'conn-badge fail'; badge.textContent = 'unreachable'; }
+}
+
+// ── Table Rendering ──
+function renderTable(platform, data, columns) {
+  const container = document.getElementById('content' + platform);
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">∅</div><div class="empty-text">API returned no data rows.</div></div>';
+    return;
+  }
+  if (!columns || columns.length === 0) {
+    const colSet = new Set(); data.forEach(r => { if (typeof r === 'object') Object.keys(r).forEach(k => colSet.add(k)); });
+    columns = Array.from(colSet);
+  }
+  let html = `<div class="table-header"><span class="table-title">${platform} Data</span><span class="row-count">${data.length.toLocaleString()} rows · ${columns.length} cols</span></div>
+  <div class="table-container"><table class="data-table"><thead><tr>${columns.map(c => '<th>' + escHtml(c) + '</th>').join('')}</tr></thead><tbody>`;
+  data.forEach(row => {
+    html += '<tr>';
+    columns.forEach(col => { let v = row[col]; if (v == null) v = ''; else if (typeof v === 'object') v = JSON.stringify(v); html += '<td title="' + escHtml(String(v)) + '">' + escHtml(String(v)) + '</td>'; });
+    html += '</tr>';
+  });
+  html += `</tbody></table></div><div class="export-bar visible"><button class="btn-export" onclick="exportCSV('${platform}')">↓ Export CSV</button><span class="export-info">${data.length} rows</span></div>`;
+  container.innerHTML = html;
+}
+
+// ── CSV Export ──
+function exportCSV(platform) {
+  const data = platform === 'Shopify' ? shopifyData : facebookData;
+  if (!data || !data.length) return;
+  const cols = Object.keys(data[0]);
+  const rows = [cols.map(c => '"' + c.replace(/"/g, '""') + '"').join(',')];
+  data.forEach(r => { rows.push(cols.map(c => { let v = r[c]; if (v == null) v = ''; else if (typeof v === 'object') v = JSON.stringify(v); return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',')); });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'databridge_' + platform.toLowerCase() + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ══════════════════════════════════════════════════════════
+// SHOPIFY — calls backend /shopify/data
+// ══════════════════════════════════════════════════════════
+async function fetchShopify() {
+  const shopDomain = document.getElementById('shopDomain').value.trim();
+  const accessToken = document.getElementById('shopToken').value.trim();
+  const dateFrom = document.getElementById('shopDateFrom').value;
+  const dateTo = document.getElementById('shopDateTo').value;
+  if (!shopDomain || !accessToken) { showError('Shopify', 'Please enter both Shop Domain and Access Token.'); return; }
+
+  showError('Shopify', null); setStatus('Shopify', 'loading'); showLoader('Shopify', true);
+  document.getElementById('contentShopify').innerHTML = '';
+  document.getElementById('btnShopify').disabled = true;
+  switchTab('shopify');
+
+  try {
+    const resp = await fetch(getBaseUrl() + '/shopify/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shop_domain: shopDomain,
+        access_token: accessToken,
+        since_date: dateFrom || '2025-01-01',
+        until_date: dateTo || '2025-12-31'
+      })
+    });
+    const json = await resp.json();
+    if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+    shopifyData = json.data || [];
+    renderTable('Shopify', shopifyData, json.columns || []);
+    setStatus('Shopify', 'success');
+  } catch (err) {
+    showError('Shopify', err.message || 'Failed to fetch');
+    setStatus('Shopify', 'error');
+    document.getElementById('contentShopify').innerHTML = '';
+  } finally {
+    showLoader('Shopify', false);
+    document.getElementById('btnShopify').disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// FACEBOOK — calls backend /facebook/data
+// ══════════════════════════════════════════════════════════
+async function fetchFacebook() {
+  const adAccountId = document.getElementById('fbAccountId').value.trim();
+  const accessToken = document.getElementById('fbToken').value.trim();
+  const dateFrom = document.getElementById('fbDateFrom').value;
+  const dateTo = document.getElementById('fbDateTo').value;
+  if (!adAccountId || !accessToken) { showError('Facebook', 'Please enter both Ad Account ID and Access Token.'); return; }
+
+  showError('Facebook', null); setStatus('Facebook', 'loading'); showLoader('Facebook', true);
+  document.getElementById('contentFacebook').innerHTML = '';
+  document.getElementById('btnFacebook').disabled = true;
+  switchTab('facebook');
+
+  try {
+    const resp = await fetch(getBaseUrl() + '/facebook/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ad_account_id: adAccountId,
+        access_token: accessToken,
+        start_date: dateFrom || '2024-01-01',
+        end_date: dateTo || '2025-12-05'
+      })
+    });
+    const json = await resp.json();
+    if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+    facebookData = json.data || [];
+    renderTable('Facebook', facebookData, json.columns || []);
+    setStatus('Facebook', 'success');
+  } catch (err) {
+    showError('Facebook', err.message || 'Failed to fetch');
+    setStatus('Facebook', 'error');
+    document.getElementById('contentFacebook').innerHTML = '';
+  } finally {
+    showLoader('Facebook', false);
+    document.getElementById('btnFacebook').disabled = false;
+  }
+}
+</script>
+</body>
+</html>
