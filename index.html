@@ -41,7 +41,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Scanline overlay */
 body::after {
   content: '';
   position: fixed;
@@ -74,12 +73,12 @@ body::after {
   font-family: var(--font); font-size: 12px; padding: 6px 10px; border-radius: 2px; width: 340px; transition: border-color 0.2s;
 }
 .config-bar input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan-dim); }
-.config-bar .conn-badge {
-  font-size: 10px; padding: 3px 8px; border-radius: 2px; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap;
+.conn-badge {
+  font-size: 10px; padding: 3px 8px; border-radius: 2px; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; display: none;
 }
-.config-bar .conn-badge.ok { background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
-.config-bar .conn-badge.fail { background: rgba(255,82,82,0.12); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
-.config-bar .conn-badge.checking { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); }
+.conn-badge.ok { display: inline; background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+.conn-badge.fail { display: inline; background: rgba(255,82,82,0.12); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
+.conn-badge.checking { display: inline; background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); }
 .btn-ping {
   background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
   font-family: var(--font); font-size: 10px; padding: 5px 10px; border-radius: 2px;
@@ -239,13 +238,11 @@ body::after {
 }
 .app-footer span { color: var(--text-secondary); }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
-/* ── Responsive ── */
 @media (max-width: 900px) {
   .app-layout { flex-direction: column; }
   .sidebar { width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
@@ -261,10 +258,10 @@ body::after {
   <div class="logo">Data<span>Bridge</span></div>
   <div class="separator"></div>
   <label for="baseUrl">Backend URL</label>
-  <input type="text" id="baseUrl" value="https://YOUR-APP.onrender.com" spellcheck="false" placeholder="https://your-app.onrender.com">
+  <input type="text" id="baseUrl" value="https://test-frontend-kwig.onrender.com" spellcheck="false">
   <button class="btn-ping" onclick="pingBackend()">Test</button>
-  <span class="conn-badge" id="connBadge" style="display:none"></span>
-  <div class="version">v1.0 · proxy mode</div>
+  <span class="conn-badge" id="connBadge"></span>
+  <div class="version">v1.0</div>
 </div>
 
 <!-- ═══ App Layout ═══ -->
@@ -358,7 +355,7 @@ body::after {
         <div id="contentShopify">
           <div class="empty-state">
             <div class="empty-icon">🛍</div>
-            <div class="empty-text">Enter your Shopify credentials in the sidebar and click "Fetch Data" to pull order-level sales data via the backend proxy.</div>
+            <div class="empty-text">Enter your Shopify credentials in the sidebar and click "Fetch Data" to pull order-level sales data.</div>
             <div class="empty-hint">Backend → ShopifyQL → GraphQL Admin API</div>
           </div>
         </div>
@@ -369,7 +366,7 @@ body::after {
         <div id="contentFacebook">
           <div class="empty-state">
             <div class="empty-icon">📘</div>
-            <div class="empty-text">Enter your Facebook Ads credentials in the sidebar and click "Fetch Data" to pull campaign insights via the backend proxy.</div>
+            <div class="empty-text">Enter your Facebook Ads credentials in the sidebar and click "Fetch Data" to pull campaign insights.</div>
             <div class="empty-hint">Backend → Graph API → Async Insights</div>
           </div>
         </div>
@@ -378,10 +375,9 @@ body::after {
   </div>
 </div>
 
-<div class="app-footer">API Demo Dashboard — <span>credentials are sent to your backend proxy and are never stored</span></div>
+<div class="app-footer">API Demo Dashboard — <span>credentials are sent to your backend proxy over HTTPS and are never stored</span></div>
 
 <script>
-// ── State ──
 let shopifyData = null;
 let facebookData = null;
 
@@ -428,7 +424,7 @@ async function pingBackend() {
 function renderTable(platform, data, columns) {
   const container = document.getElementById('content' + platform);
   if (!data || data.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">∅</div><div class="empty-text">API returned no data rows.</div></div>';
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">∅</div><div class="empty-text">API returned no data rows for the given parameters.</div></div>';
     return;
   }
   if (!columns || columns.length === 0) {
@@ -439,7 +435,7 @@ function renderTable(platform, data, columns) {
   <div class="table-container"><table class="data-table"><thead><tr>${columns.map(c => '<th>' + escHtml(c) + '</th>').join('')}</tr></thead><tbody>`;
   data.forEach(row => {
     html += '<tr>';
-    columns.forEach(col => { let v = row[col]; if (v == null) v = ''; else if (typeof v === 'object') v = JSON.stringify(v); html += '<td title="' + escHtml(String(v)) + '">' + escHtml(String(v)) + '</td>'; });
+    columns.forEach(col => { let v = row[col]; if (v == null) v = '—'; else if (typeof v === 'object') v = JSON.stringify(v); html += '<td title="' + escHtml(String(v)) + '">' + escHtml(String(v)) + '</td>'; });
     html += '</tr>';
   });
   html += `</tbody></table></div><div class="export-bar visible"><button class="btn-export" onclick="exportCSV('${platform}')">↓ Export CSV</button><span class="export-info">${data.length} rows</span></div>`;
@@ -540,6 +536,9 @@ async function fetchFacebook() {
     document.getElementById('btnFacebook').disabled = false;
   }
 }
+
+// Auto-ping on load
+window.addEventListener('load', () => { setTimeout(pingBackend, 500); });
 </script>
 </body>
 </html>
