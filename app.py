@@ -34,6 +34,8 @@ def health():
 
 # ─────────────────────────────────────────────────────────────
 # SHOPIFY — ShopifyQL via GraphQL Admin API
+# Uses API version 2026-04 (shopifyqlQuery available since 2025-10)
+# Query passed as inline string argument per official Shopify docs
 # ─────────────────────────────────────────────────────────────
 @app.route("/shopify/data", methods=["POST"])
 def shopify_data():
@@ -52,30 +54,27 @@ def shopify_data():
             if "." not in shop_domain:
                 shop_domain = shop_domain + ".myshopify.com"
 
-        api_version = "2025-04"
+        # IMPORTANT: Use 2026-04 — shopifyqlQuery was introduced in 2025-10
+        api_version = "2026-04"
         graphql_url = f"https://{shop_domain}/admin/api/{api_version}/graphql.json"
 
-        # Build ShopifyQL query
-        shopifyql = f"""
-        FROM sales
-          SHOW gross_sales, discounts, returns, net_sales, taxes, shipping_charges, total_sales
-          GROUP BY day, order_id
-          SINCE {since_date}
-          UNTIL {until_date}
-          ORDER BY day ASC
-        """.strip()
+        # Build ShopifyQL string
+        shopifyql = (
+            f"FROM sales "
+            f"SHOW gross_sales, discounts, returns, net_sales, taxes, shipping_charges, total_sales "
+            f"GROUP BY day, order_id "
+            f"SINCE {since_date} "
+            f"UNTIL {until_date} "
+            f"ORDER BY day ASC"
+        )
 
-        graphql_query = """
-        query ($shopifyql: String!) {
-          shopifyqlQuery(query: $shopifyql) {
-            tableData {
-              columns { name dataType displayName }
-              rows
-            }
-            parseErrors
-          }
-        }
-        """
+        # IMPORTANT: Pass ShopifyQL as inline argument, NOT as a GraphQL variable
+        # This matches the official Shopify documentation exactly
+        # The ShopifyQL string is embedded directly in the query with escaped quotes
+        graphql_query = (
+            '{ shopifyqlQuery(query: "' + shopifyql.replace('"', '\\"') + '") '
+            '{ tableData { columns { name dataType displayName } rows } parseErrors } }'
+        )
 
         headers = {
             "Content-Type": "application/json",
@@ -85,26 +84,36 @@ def shopify_data():
         resp = requests.post(
             graphql_url,
             headers=headers,
-            json={"query": graphql_query, "variables": {"shopifyql": shopifyql}},
+            json={"query": graphql_query},
             timeout=30
         )
         resp.raise_for_status()
         data = resp.json()
 
-        # Check for errors
+        # Check for GraphQL-level errors
         if "errors" in data:
-            return jsonify({"error": "; ".join(e.get("message", str(e)) for e in data["errors"])}), 400
+            error_msgs = []
+            for e in data["errors"]:
+                if isinstance(e, dict):
+                    error_msgs.append(e.get("message", str(e)))
+                else:
+                    error_msgs.append(str(e))
+            return jsonify({"error": "; ".join(error_msgs)}), 400
 
         result = data.get("data", {}).get("shopifyqlQuery")
         if not result:
-            return jsonify({"error": "No shopifyqlQuery in response"}), 400
+            return jsonify({"error": "No shopifyqlQuery in response. Full response: " + json.dumps(data)[:500]}), 400
 
-        if result.get("parseErrors"):
+        if result.get("parseErrors") and len(result["parseErrors"]) > 0:
             return jsonify({"error": f"ShopifyQL parse errors: {result['parseErrors']}"}), 400
 
-        # Parse into rows
-        columns = [col["name"] for col in result["tableData"]["columns"]]
-        rows = result["tableData"]["rows"]
+        # Parse table data
+        table_data = result.get("tableData")
+        if not table_data:
+            return jsonify({"error": "No tableData in response"}), 400
+
+        columns = [col["name"] for col in table_data["columns"]]
+        rows = table_data["rows"]
 
         # Column rename map
         col_map = {
@@ -114,12 +123,21 @@ def shopify_data():
         }
 
         display_columns = [col_map.get(c, c) for c in columns]
+
+        # Rows can come back as arrays or objects depending on API version
         table_rows = []
         for row in rows:
             obj = {}
-            for i, col in enumerate(columns):
-                key = col_map.get(col, col)
-                obj[key] = row[i] if i < len(row) else None
+            if isinstance(row, dict):
+                # Object format: {"day": "2025-01-01", "total_sales": "123.45"}
+                for col in columns:
+                    key = col_map.get(col, col)
+                    obj[key] = row.get(col)
+            elif isinstance(row, list):
+                # Array format: ["2025-01-01", "123.45"]
+                for i, col in enumerate(columns):
+                    key = col_map.get(col, col)
+                    obj[key] = row[i] if i < len(row) else None
             table_rows.append(obj)
 
         return jsonify({
@@ -163,8 +181,6 @@ def facebook_data():
             "impressions", "clicks", "reach", "spend", "cpc", "ctr", "cpm",
             "actions", "action_values"
         ])
-
-        time_range = json.dumps({"since": start_date, "until": end_date})
 
         # ── Date chunking to avoid timeouts on large ranges ──
         all_rows = []
